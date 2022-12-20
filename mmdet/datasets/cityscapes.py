@@ -1,4 +1,3 @@
-# Copyright (c) OpenMMLab. All rights reserved.
 # Modified from https://github.com/facebookresearch/detectron2/blob/master/detectron2/data/datasets/cityscapes.py # noqa
 # and https://github.com/mcordts/cityscapesScripts/blob/master/cityscapesscripts/evaluation/evalInstanceLevelSemanticLabeling.py # noqa
 
@@ -10,7 +9,7 @@ from collections import OrderedDict
 
 import mmcv
 import numpy as np
-import pycocotools.mask as maskUtils
+import aitodpycocotools.mask as maskUtils
 from mmcv.utils import print_log
 
 from .builder import DATASETS
@@ -22,9 +21,6 @@ class CityscapesDataset(CocoDataset):
 
     CLASSES = ('person', 'rider', 'car', 'truck', 'bus', 'train', 'motorcycle',
                'bicycle')
-
-    PALETTE = [(220, 20, 60), (255, 0, 0), (0, 0, 142), (0, 0, 70),
-               (0, 60, 100), (0, 80, 100), (0, 0, 230), (119, 11, 32)]
 
     def _filter_imgs(self, min_size=32):
         """Filter images too small or without ground truths."""
@@ -263,9 +259,8 @@ class CityscapesDataset(CocoDataset):
             # create CocoDataset with CityscapesDataset annotation
             self_coco = CocoDataset(self.ann_file, self.pipeline.transforms,
                                     None, self.data_root, self.img_prefix,
-                                    self.seg_prefix, self.seg_suffix,
-                                    self.proposal_file, self.test_mode,
-                                    self.filter_empty_gt)
+                                    self.seg_prefix, self.proposal_file,
+                                    self.test_mode, self.filter_empty_gt)
             # TODO: remove this in the future
             # reload annotations of correct class
             self_coco.CLASSES = self.CLASSES
