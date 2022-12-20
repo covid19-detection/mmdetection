@@ -1,4 +1,3 @@
-# Copyright (c) OpenMMLab. All rights reserved.
 import argparse
 import os.path as osp
 import warnings
@@ -23,8 +22,7 @@ def pytorch2onnx(model,
                  verify=False,
                  test_img=None,
                  do_simplify=False,
-                 dynamic_export=None,
-                 skip_postprocess=False):
+                 dynamic_export=None):
 
     input_config = {
         'input_shape': input_shape,
@@ -34,26 +32,6 @@ def pytorch2onnx(model,
     # prepare input
     one_img, one_meta = preprocess_example_input(input_config)
     img_list, img_meta_list = [one_img], [[one_meta]]
-
-    if skip_postprocess:
-        warnings.warn('Not all models support export onnx without post '
-                      'process, especially two stage detectors!')
-        model.forward = model.forward_dummy
-        torch.onnx.export(
-            model,
-            one_img,
-            output_file,
-            input_names=['input'],
-            export_params=True,
-            keep_initializers_as_inputs=True,
-            do_constant_folding=True,
-            verbose=show,
-            opset_version=opset_version)
-
-        print(f'Successfully exported ONNX model without '
-              f'post process: {output_file}')
-        return
-
     # replace original forward function
     origin_forward = model.forward
     model.forward = partial(
@@ -71,8 +49,8 @@ def pytorch2onnx(model,
         dynamic_axes = {
             input_name: {
                 0: 'batch',
-                2: 'height',
-                3: 'width'
+                2: 'width',
+                3: 'height'
             },
             'dets': {
                 0: 'batch',
@@ -101,22 +79,28 @@ def pytorch2onnx(model,
 
     model.forward = origin_forward
 
+    # get the custom op path
+    ort_custom_op_path = ''
+    try:
+        from mmcv.ops import get_onnxruntime_op_path
+        ort_custom_op_path = get_onnxruntime_op_path()
+    except (ImportError, ModuleNotFoundError):
+        warnings.warn('If input model has custom op from mmcv, \
+            you may have to build mmcv with ONNXRuntime from source.')
+
     if do_simplify:
         import onnxsim
 
         from mmdet import digit_version
 
-        min_required_version = '0.4.0'
+        min_required_version = '0.3.0'
         assert digit_version(onnxsim.__version__) >= digit_version(
             min_required_version
-        ), f'Requires to install onnxsim>={min_required_version}'
+        ), f'Requires to install onnx-simplify>={min_required_version}'
 
-        model_opt, check_ok = onnxsim.simplify(output_file)
-        if check_ok:
-            onnx.save(model_opt, output_file)
-            print(f'Successfully simplified ONNX model: {output_file}')
-        else:
-            warnings.warn('Failed to simplify ONNX model.')
+        input_dic = {'input': img_list[0].detach().cpu().numpy()}
+        onnxsim.simplify(
+            output_file, input_data=input_dic, custom_lib=ort_custom_op_path)
     print(f'Successfully exported ONNX model: {output_file}')
 
     if verify:
@@ -140,12 +124,9 @@ def pytorch2onnx(model,
         img_list, img_meta_list = [one_img], [[one_meta]]
 
         # get pytorch output
-        with torch.no_grad():
-            pytorch_results = model(
-                img_list,
-                img_metas=img_meta_list,
-                return_loss=False,
-                rescale=True)[0]
+        pytorch_results = model(
+            img_list, img_metas=img_meta_list, return_loss=False,
+            rescale=True)[0]
 
         img_list = [_.cuda().contiguous() for _ in img_list]
         if dynamic_export:
@@ -268,12 +249,6 @@ def parse_args():
         '--dynamic-export',
         action='store_true',
         help='Whether to export onnx with dynamic axis.')
-    parser.add_argument(
-        '--skip-postprocess',
-        action='store_true',
-        help='Whether to export model without post process. Experimental '
-        'option. We do not guarantee the correctness of the exported '
-        'model.')
     args = parser.parse_args()
     return args
 
@@ -327,17 +302,4 @@ if __name__ == '__main__':
         verify=args.verify,
         test_img=args.test_img,
         do_simplify=args.simplify,
-        dynamic_export=args.dynamic_export,
-        skip_postprocess=args.skip_postprocess)
-
-    # Following strings of text style are from colorama package
-    bright_style, reset_style = '\x1b[1m', '\x1b[0m'
-    red_text, blue_text = '\x1b[31m', '\x1b[34m'
-    white_background = '\x1b[107m'
-
-    msg = white_background + bright_style + red_text
-    msg += 'DeprecationWarning: This tool will be deprecated in future. '
-    msg += blue_text + 'Welcome to use the unified model deployment toolbox '
-    msg += 'MMDeploy: https://github.com/open-mmlab/mmdeploy'
-    msg += reset_style
-    warnings.warn(msg)
+        dynamic_export=args.dynamic_export)

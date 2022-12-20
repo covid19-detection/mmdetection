@@ -1,10 +1,7 @@
-# Copyright (c) OpenMMLab. All rights reserved.
 import argparse
 import warnings
 
 from mmcv import Config, DictAction
-
-from mmdet.utils import replace_cfg_vals, update_data_root
 
 
 def parse_args():
@@ -44,15 +41,12 @@ def main():
     args = parse_args()
 
     cfg = Config.fromfile(args.config)
-
-    # replace the ${key} with the value of cfg.key
-    cfg = replace_cfg_vals(cfg)
-
-    # update data root according to MMDET_DATASETS
-    update_data_root(cfg)
-
     if args.cfg_options is not None:
         cfg.merge_from_dict(args.cfg_options)
+    # import modules from string list.
+    if cfg.get('custom_imports', None):
+        from mmcv.utils import import_modules_from_strings
+        import_modules_from_strings(**cfg['custom_imports'])
     print(f'Config:\n{cfg.pretty_text}')
 
 
